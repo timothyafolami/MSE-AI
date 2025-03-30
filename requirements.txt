@@ -17,4 +17,3 @@ faiss-cpu==1.7.4
 unstructured==0.12.5
 sentence-transformers==4.0.1
 pypdf==5.4.0 
-faiss-cpu==1.10.0 
