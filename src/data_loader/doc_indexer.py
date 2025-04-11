@@ -50,7 +50,7 @@ def create_and_save_document_index(embeddings, document_path):
 
     # Split text into chunks
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
+        chunk_size=10000,
         chunk_overlap=150,  # Increased overlap for better context preservation
         length_function=len,
         separators=["\n\n", "\n", ". ", " ", ""]

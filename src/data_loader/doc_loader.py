@@ -1,9 +1,12 @@
 import os
 import docx
-from typing import Dict, List
+import glob
+from typing import Dict, List, Optional
 from pathlib import Path
 from langchain_community.document_loaders import TextLoader
 from loguru import logger
+from src.data_loader import settings
+from src.data_loader.doc_indexer import create_and_save_document_index
 
 # Import the PDF loading functions from pdf_loader.py
 from src.data_loader.pdf_loader import load_pdf  
@@ -113,3 +116,36 @@ class DataLoader:
                 logger.error(f"Failed to load data from {file_path}: {str(e)}")
 
         return data_dict
+
+def load_initial_data(embeddings) -> List[str]:
+    """
+    Load and index all PDF files in the data directory.
+    
+    Args:
+        embeddings: The embeddings object to use for indexing
+    
+    Returns:
+        List[str]: Paths to the created indices
+    """
+    # Get all PDF files in the data directory
+    pdf_files = glob.glob(os.path.join(settings.DATA_DIR, "**/*.pdf"), recursive=True)
+    
+    if not pdf_files:
+        logger.warning("No PDF files found in the data directory.")
+        return []
+    
+    logger.info(f"Found {len(pdf_files)} PDF files to index.")
+    
+    # Index each PDF file
+    indices = []
+    for pdf_file in pdf_files:
+        try:
+            logger.info(f"Indexing {pdf_file}...")
+            index_path = create_and_save_document_index(embeddings, pdf_file)
+            indices.append(index_path)
+            logger.success(f"Successfully indexed {pdf_file} -> {index_path}")
+        except Exception as e:
+            logger.error(f"Failed to index {pdf_file}: {str(e)}")
+    
+    logger.info(f"Successfully indexed {len(indices)} out of {len(pdf_files)} files.")
+    return indices

@@ -10,11 +10,14 @@ project_root = os.path.abspath(os.path.dirname(__file__))
 sys.path.insert(0, project_root)
 
 # Import project modules
-from src.data_loader.doc_indexer import retrieve_documents
-from src.data_loader.unstructured_loader import DataIndexer
+from src.data_loader.doc_loader import load_initial_data
 from src.ai_functions.prompt_functions import (
-    generate_multiple_queries, 
-    analyze_document_content,
+    determine_query_mode,
+    generate_conversational_response,
+    generate_initial_questions,
+    generate_refined_questions,
+    create_comprehensive_query,
+    generate_material_recommendations,
     sentence_transformer_embeddings
 )
 
@@ -24,116 +27,268 @@ load_dotenv()
 # Setup logging
 logger.add("logs/app.log", rotation="500 MB")
 
+def initialize_session_state():
+    """Initialize session state variables"""
+    if 'conversation' not in st.session_state:
+        st.session_state.conversation = []
+    
+    if 'mode' not in st.session_state:
+        st.session_state.mode = None  # Will be set to "CONVERSATIONAL" or "MATERIAL_SCIENCE"
+    
+    # Initial MSE-AI flow state variables
+    if 'initial_questions' not in st.session_state:
+        st.session_state.initial_questions = []
+    
+    if 'initial_qa' not in st.session_state:
+        st.session_state.initial_qa = {}
+    
+    if 'initial_questions_answered' not in st.session_state:
+        st.session_state.initial_questions_answered = False
+    
+    # Refined MSE-AI flow state variables
+    if 'refined_questions' not in st.session_state:
+        st.session_state.refined_questions = []
+    
+    if 'refined_qa' not in st.session_state:
+        st.session_state.refined_qa = {}
+    
+    if 'refined_questions_answered' not in st.session_state:
+        st.session_state.refined_questions_answered = False
+    
+    # User's original query for MSE-AI mode
+    if 'original_query' not in st.session_state:
+        st.session_state.original_query = ""
+    
+    # Material recommendations state
+    if 'recommendation_provided' not in st.session_state:
+        st.session_state.recommendation_provided = False
+
+
+def reset_session_state():
+    """Reset the session state for a new conversation"""
+    if 'mode' in st.session_state:
+        st.session_state.mode = None
+    if 'initial_questions' in st.session_state:
+        st.session_state.initial_questions = []
+    if 'initial_qa' in st.session_state:
+        st.session_state.initial_qa = {}
+    if 'initial_questions_answered' in st.session_state:
+        st.session_state.initial_questions_answered = False
+    if 'refined_questions' in st.session_state:
+        st.session_state.refined_questions = []
+    if 'refined_qa' in st.session_state:
+        st.session_state.refined_qa = {}
+    if 'refined_questions_answered' in st.session_state:
+        st.session_state.refined_questions_answered = False
+    if 'original_query' in st.session_state:
+        st.session_state.original_query = ""
+    if 'recommendation_provided' in st.session_state:
+        st.session_state.recommendation_provided = False
+
+
 def main():
     # Set page configuration
     st.set_page_config(
-        page_title="Material Science Assistant",
+        page_title="MSE-AI: Materials Science & Conversation Assistant",
         page_icon="🧪",
         layout="wide"
     )
     
+    # Initialize session state
+    initialize_session_state()
+    
     # Page title and description
-    st.title("Material Science Document Assistant")
-    st.write("Upload material science documents and query their content with AI-powered analysis")
+    st.title("MSE-AI: Materials Science & Conversation Assistant")
+    st.write("Ask any question - from everyday topics to specialized materials science inquiries. I can help with both!")
     
-    # Initialize session state for storing document indices
-    if 'document_indices' not in st.session_state:
-        st.session_state.document_indices = []
+    # Add a reset button
+    if st.button("Start New Conversation"):
+        st.session_state.conversation = []
+        reset_session_state()
+        st.experimental_rerun()
     
-    # Sidebar for document upload
-    with st.sidebar:
-        st.header("Upload Documents")
-        st.write("Supported formats: PDF, DOCX, DOC, TXT")
-        uploaded_files = st.file_uploader("Choose files to analyze", 
-                                         accept_multiple_files=True,
-                                         type=["pdf", "docx", "doc", "txt"])
-        
-        if uploaded_files:
-            process_button = st.button("Process Documents")
-            if process_button:
-                with st.spinner("Processing documents... This may take a few minutes depending on file size."):
-                    process_uploaded_documents(uploaded_files)
-                    st.sidebar.success(f"✅ Successfully processed {len(uploaded_files)} document(s)")
+    # Display conversation history
+    for message in st.session_state.conversation:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
     
-    # Query interface in main area
-    st.header("Ask About Your Materials Science Documents")
+    # User input
+    user_input = st.chat_input("What would you like to ask or discuss?")
     
-    # Only show query interface if documents have been processed
-    if st.session_state.document_indices:
-        query = st.text_input("Enter your materials science question:")
+    if user_input:
+        # Add user message to conversation
+        st.session_state.conversation.append({"role": "user", "content": user_input})
         
-        if query:
-            with st.spinner("Analyzing materials science documents..."):
-                # Generate multiple related queries behind the scenes
-                related_queries = generate_multiple_queries(query)
+        # Display user message
+        with st.chat_message("user"):
+            st.write(user_input)
+        
+        # If this is a new query (no mode set yet)
+        if st.session_state.mode is None:
+            with st.spinner("Analyzing your query..."):
+                # Determine if the query is conversational or materials science focused
+                mode = determine_query_mode(user_input)
+                st.session_state.mode = mode
+                logger.info(f"Query mode determined: {mode}")
                 
-                # Retrieve relevant content for each query without showing intermediate steps
-                all_results = []
+                if mode == "CONVERSATIONAL":
+                    # Generate a conversational response
+                    response = generate_conversational_response(user_input)
+                    
+                    st.session_state.conversation.append({"role": "assistant", "content": response})
+                    with st.chat_message("assistant"):
+                        st.write(response)
                 
-                # Process each document index
-                for index_path in st.session_state.document_indices:
-                    try:
-                        document_name = Path(index_path).name
-                        logger.info(f"Searching in document: {document_name}")
-                        
-                        # Retrieve documents for each query (original query and generated queries)
-                        for q in [query] + related_queries:
-                            doc_results = retrieve_documents(
-                                embeddings=sentence_transformer_embeddings,
-                                query=q,
-                                document_name=document_name,
-                                search_type="mmr",
-                                k=5
-                            )
-                            all_results.extend(doc_results)
-                    except Exception as e:
-                        logger.error(f"Error retrieving documents: {str(e)}")
-                
-                analysis = analyze_document_content(query, all_results)
-                
-                # Display the final analysis
-                st.markdown(analysis)
-    else:
-        st.info("Please upload and process documents to begin your materials science exploration.")
-
-def process_uploaded_documents(uploaded_files):
-    """Process uploaded documents and create vector indices"""
-    try:
-        # Create a temporary directory to store uploaded files
-        temp_dir = Path("temp_uploads")
-        temp_dir.mkdir(exist_ok=True)
+                else:  # MATERIAL_SCIENCE mode
+                    # Store the original query
+                    st.session_state.original_query = user_input
+                    
+                    # Generate initial questions
+                    questions = generate_initial_questions(user_input)
+                    st.session_state.initial_questions = questions
+                    
+                    # Display the first question
+                    response = "Thank you for your materials science question. To provide the best recommendation, I'll need some additional information. Let's start with:"
+                    response += f"\n\n{questions[0]}"
+                    
+                    st.session_state.conversation.append({"role": "assistant", "content": response})
+                    with st.chat_message("assistant"):
+                        st.write(response)
         
-        # Save uploaded files to the temporary directory
-        file_paths = []
-        for uploaded_file in uploaded_files:
-            file_path = temp_dir / uploaded_file.name
-            with open(file_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            file_paths.append(str(file_path))
-        
-        # Create DataIndexer and process files
-        indexer = DataIndexer(
-            embeddings=sentence_transformer_embeddings,
-            input_paths=file_paths,
-            max_workers=4
-        )
-        
-        index_paths = indexer.process_all_files()
-        
-        # Update session state with new indices
-        st.session_state.document_indices.extend(index_paths)
-        
-        # Display summary
-        summary = indexer.get_summary()
-        
-        if summary['failed']['count'] > 0:
-            st.sidebar.warning(f"⚠️ Failed to process {summary['failed']['count']} documents.")
-            for failed_file in summary['failed']['files']:
-                st.sidebar.write(f"- {Path(failed_file).name}")
+        # Handle follow-up responses in MATERIAL_SCIENCE mode - initial questions
+        elif st.session_state.mode == "MATERIAL_SCIENCE" and not st.session_state.initial_questions_answered:
+            # Store the user's answer to the current question
+            current_question_index = len(st.session_state.initial_qa)
+            current_question = st.session_state.initial_questions[current_question_index]
             
-    except Exception as e:
-        logger.error(f"Error processing uploaded documents: {str(e)}")
-        st.sidebar.error(f"Error processing documents: {str(e)}")
+            # Handle empty answers or "none"/"nil" with a default assumption
+            if user_input.lower() in ["none", "nil", ""] or user_input.isspace():
+                user_input = "No specific requirement provided. Please make a best assumption."
+            
+            st.session_state.initial_qa[current_question] = user_input
+            
+            # Check if we have more initial questions to ask
+            if current_question_index + 1 < len(st.session_state.initial_questions):
+                # Ask the next question
+                next_question = st.session_state.initial_questions[current_question_index + 1]
+                response = f"Thank you. Next question:\n\n{next_question}"
+                
+                st.session_state.conversation.append({"role": "assistant", "content": response})
+                with st.chat_message("assistant"):
+                    st.write(response)
+            else:
+                # All initial questions answered, generate refined questions
+                st.session_state.initial_questions_answered = True
+                
+                with st.spinner("Analyzing your responses and generating follow-up questions..."):
+                    # Generate refined questions
+                    refined_questions = generate_refined_questions(
+                        st.session_state.original_query,
+                        st.session_state.initial_qa
+                    )
+                    st.session_state.refined_questions = refined_questions
+                    
+                    # Ask the first refined question
+                    response = "Great! Based on your answers, I have a few more specific questions to better understand your requirements:"
+                    response += f"\n\n{refined_questions[0]}"
+                    
+                    st.session_state.conversation.append({"role": "assistant", "content": response})
+                    with st.chat_message("assistant"):
+                        st.write(response)
+        
+        # Handle follow-up responses in MATERIAL_SCIENCE mode - refined questions
+        elif st.session_state.mode == "MATERIAL_SCIENCE" and st.session_state.initial_questions_answered and not st.session_state.refined_questions_answered:
+            # Store the user's answer to the current refined question
+            current_question_index = len(st.session_state.refined_qa)
+            current_question = st.session_state.refined_questions[current_question_index]
+            
+            # Handle empty answers or "none"/"nil" with a default assumption
+            if user_input.lower() in ["none", "nil", ""] or user_input.isspace():
+                user_input = "No specific requirement provided. Please make a best assumption."
+            
+            st.session_state.refined_qa[current_question] = user_input
+            
+            # Check if we have more refined questions to ask
+            if current_question_index + 1 < len(st.session_state.refined_questions):
+                # Ask the next refined question
+                next_question = st.session_state.refined_questions[current_question_index + 1]
+                response = f"Thank you. Next question:\n\n{next_question}"
+                
+                st.session_state.conversation.append({"role": "assistant", "content": response})
+                with st.chat_message("assistant"):
+                    st.write(response)
+            else:
+                # All refined questions answered, generate material recommendations
+                st.session_state.refined_questions_answered = True
+                
+                with st.spinner("Analyzing your requirements and searching for optimal materials..."):
+                    # Create comprehensive query from all answers
+                    comprehensive_query = create_comprehensive_query(
+                        st.session_state.original_query,
+                        st.session_state.initial_qa,
+                        st.session_state.refined_qa
+                    )
+                    
+                    # Generate material recommendations
+                    recommendations = generate_material_recommendations(comprehensive_query)
+                    st.session_state.recommendation_provided = True
+                    
+                    response = "Based on your requirements, here are my material recommendations:\n\n"
+                    response += recommendations
+                    response += "\n\nYou can ask follow-up questions about these materials or start a new inquiry at any time."
+                    
+                    st.session_state.conversation.append({"role": "assistant", "content": response})
+                    with st.chat_message("assistant"):
+                        st.write(response)
+        
+        # Handle follow-up questions after recommendations are provided or in conversational mode
+        elif (st.session_state.mode == "MATERIAL_SCIENCE" and st.session_state.recommendation_provided) or st.session_state.mode == "CONVERSATIONAL":
+            with st.spinner("Processing your question..."):
+                # Check if we should switch modes for this follow-up question
+                new_mode = determine_query_mode(user_input)
+                
+                if new_mode != st.session_state.mode:
+                    # Mode has changed, reset the flow
+                    reset_session_state()
+                    st.session_state.mode = new_mode
+                    
+                    if new_mode == "CONVERSATIONAL":
+                        # Generate a conversational response
+                        response = generate_conversational_response(user_input)
+                        
+                        st.session_state.conversation.append({"role": "assistant", "content": response})
+                        with st.chat_message("assistant"):
+                            st.write(response)
+                    else:  # Switched to MATERIAL_SCIENCE mode
+                        # Store the original query
+                        st.session_state.original_query = user_input
+                        
+                        # Generate initial questions
+                        questions = generate_initial_questions(user_input)
+                        st.session_state.initial_questions = questions
+                        
+                        # Display the first question
+                        response = "Let me help with your materials science question. To provide the best recommendation, I'll need some additional information. Let's start with:"
+                        response += f"\n\n{questions[0]}"
+                        
+                        st.session_state.conversation.append({"role": "assistant", "content": response})
+                        with st.chat_message("assistant"):
+                            st.write(response)
+                else:
+                    # Same mode, treat as a follow-up question
+                    if st.session_state.mode == "CONVERSATIONAL":
+                        response = generate_conversational_response(user_input)
+                    else:  # MATERIAL_SCIENCE follow-up
+                        # For follow-up in material science mode, we'll treat it as a new conversation related to materials
+                        # A more sophisticated approach would use RAG to generate a response based on the vector database
+                        response = generate_conversational_response(user_input)
+                    
+                    st.session_state.conversation.append({"role": "assistant", "content": response})
+                    with st.chat_message("assistant"):
+                        st.write(response)
+
 
 if __name__ == "__main__":
+    # Create required directories
+    os.makedirs("logs", exist_ok=True)
     main()
