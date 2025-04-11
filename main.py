@@ -105,7 +105,7 @@ def main():
     if st.button("Start New Conversation"):
         st.session_state.conversation = []
         reset_session_state()
-        st.experimental_rerun()
+        st.rerun()
     
     # Display conversation history
     for message in st.session_state.conversation:
