@@ -114,20 +114,29 @@ def retrieve_documents(
         search_kwargs["fetch_k"] = min(k * 3, 100)  # Fetch more candidates for diversity
         search_kwargs["lambda_mult"] = 0.7  # Balance between relevance and diversity
     
-    retriever = vector_store.as_retriever(
-        search_type=search_type,
-        search_kwargs=search_kwargs
-    )
-    
-    # Perform document retrieval
     try:
+        retriever = vector_store.as_retriever(
+            search_type=search_type,
+            search_kwargs=search_kwargs
+        )
+        
+        # Perform document retrieval
         logger.info(f"Retrieving documents for query: {query}")
         docs = retriever.invoke(query)
         logger.success(f"Retrieved {len(docs)} documents for query: {query}")
+        return docs
     except Exception as e:
-        logger.error(f"Error during document retrieval for {document_name}: {str(e)}")
-        raise ValueError(f"Failed to retrieve documents for query '{query}' from {document_name}: {str(e)}")
-
-    # Extract the content from retrieved documents
-    output = [doc for doc in docs]
-    return output
+        # Check if the error is related to the retriever type
+        if "items" in str(e) and "has no attribute" in str(e):
+            # Try fallback to similarity search directly
+            logger.warning(f"Falling back to direct similarity search for {document_name}")
+            try:
+                docs = vector_store.similarity_search(query, k=k)
+                logger.success(f"Successfully retrieved {len(docs)} documents using fallback method")
+                return docs
+            except Exception as fallback_e:
+                logger.error(f"Fallback retrieval also failed: {str(fallback_e)}")
+                raise ValueError(f"Failed to retrieve documents using fallback method: {str(fallback_e)}")
+        else:
+            logger.error(f"Error during document retrieval for {document_name}: {str(e)}")
+            raise ValueError(f"Failed to retrieve documents for query '{query}' from {document_name}: {str(e)}")

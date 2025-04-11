@@ -304,7 +304,8 @@ def search_materials_database(sub_queries: List[str], available_indices: List[st
     # Process each document index
     for index_path in available_indices:
         try:
-            document_name = Path(index_path).name
+            # Extract just the folder name without the parent path
+            document_name = os.path.basename(index_path)
             logger.info(f"Searching in document: {document_name}")
             
             # Retrieve documents for each sub-query
@@ -317,7 +318,12 @@ def search_materials_database(sub_queries: List[str], available_indices: List[st
                         search_type="mmr",
                         k=3  # Limit results per query to avoid too much data
                     )
-                    all_results.extend([d.page_content for d in doc_results])
+                    # Handle different return types (Document objects or other)
+                    for doc in doc_results:
+                        if hasattr(doc, 'page_content'):
+                            all_results.append(doc.page_content)
+                        else:
+                            all_results.append(str(doc))
                     logger.info(f"Retrieved {len(doc_results)} results for query: {query}")
                 except Exception as e:
                     logger.error(f"Error retrieving documents for query '{query}': {str(e)}")
@@ -358,6 +364,12 @@ def generate_material_recommendations(comprehensive_query: str, llm=llama_llm) -
             if os.path.isdir(full_path):
                 index_dirs.append(full_path)
         
+        logger.info(f"Found {len(index_dirs)} document indices: {index_dirs}")
+        
+        if not index_dirs:
+            logger.warning("No document indices found in the database")
+            return "I couldn't find any indexed documents in our database. Please ensure that documents have been properly indexed."
+        
         # Search the materials database using the sub-queries
         retrieved_texts = search_materials_database(sub_queries, index_dirs)
         
@@ -377,11 +389,24 @@ def generate_material_recommendations(comprehensive_query: str, llm=llama_llm) -
         # Limit the length of each text segment (truncate to 1000 chars)
         truncated_texts = []
         for text in retrieved_texts:
-            if len(text) > 1000:
-                truncated_text = text[:1000] + "... [truncated]"
-                truncated_texts.append(truncated_text)
+            if isinstance(text, str):
+                if len(text) > 1000:
+                    truncated_text = text[:1000] + "... [truncated]"
+                    truncated_texts.append(truncated_text)
+                else:
+                    truncated_texts.append(text)
             else:
-                truncated_texts.append(text)
+                # If the text is not a string (could be an object), try to get its content
+                try:
+                    content = str(text)[:1000] + "... [truncated]" if len(str(text)) > 1000 else str(text)
+                    truncated_texts.append(content)
+                except Exception as e:
+                    logger.error(f"Error processing text segment: {str(e)}")
+                    continue
+        
+        if not truncated_texts:
+            logger.warning("No valid text segments after processing")
+            return "I couldn't process the materials data effectively. Please try a different query approach."
         
         # Create the analysis prompt
         analysis_prompt = PromptTemplate(
