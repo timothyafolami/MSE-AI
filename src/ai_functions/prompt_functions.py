@@ -25,6 +25,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 # Initialize sentence transformer embeddings
 sentence_transformer_embeddings = SentenceTransformer("all-MiniLM-L6-v2")
+
 # LLAMA 3.1
 llama_llm = ChatGroq(
     model="llama-3.3-70b-versatile",
