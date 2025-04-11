@@ -286,9 +286,3 @@ def main():
                     st.session_state.conversation.append({"role": "assistant", "content": response})
                     with st.chat_message("assistant"):
                         st.write(response)
-
-
-if __name__ == "__main__":
-    # Create required directories
-    os.makedirs("logs", exist_ok=True)
-    main()
