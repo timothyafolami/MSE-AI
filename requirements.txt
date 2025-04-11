@@ -13,3 +13,4 @@ unstructured==0.17.2
 sentence-transformers==4.0.2
 pypdf==5.4.0
 langchain-huggingface==0.1.2 
+huggingface-hub==0.30.2
