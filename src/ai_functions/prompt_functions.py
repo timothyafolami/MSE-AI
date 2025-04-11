@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from src.data_loader import settings
 from src.ai_functions.prompts import *
 from langchain_huggingface import HuggingFaceEmbeddings
+from sentence_transformers import SentenceTransformer
 from src.data_loader.doc_indexer import retrieve_documents
 
 load_dotenv()
@@ -23,12 +24,7 @@ load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 # Initialize sentence transformer embeddings
-sentence_transformer_embeddings = HuggingFaceEmbeddings(
-    model_name="all-MiniLM-L6-v2",
-    model_kwargs={"device": "cpu"},
-    encode_kwargs={"normalize_embeddings": True}
-)
-
+sentence_transformer_embeddings = SentenceTransformer("all-MiniLM-L6-v2")
 # LLAMA 3.1
 llama_llm = ChatGroq(
     model="llama-3.3-70b-versatile",
