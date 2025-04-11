@@ -119,7 +119,7 @@ class DataLoader:
 
 def load_initial_data(embeddings) -> List[str]:
     """
-    Load and index all PDF files in the data directory.
+    Load and index all document files in the data directory.
     
     Args:
         embeddings: The embeddings object to use for indexing
@@ -127,25 +127,40 @@ def load_initial_data(embeddings) -> List[str]:
     Returns:
         List[str]: Paths to the created indices
     """
-    # Get all PDF files in the data directory
-    pdf_files = glob.glob(os.path.join(settings.DATA_DIR, "**/*.pdf"), recursive=True)
+    # Get all supported files in the data directory
+    all_files = []
     
-    if not pdf_files:
-        logger.warning("No PDF files found in the data directory.")
+    # Get PDF files
+    pdf_files = glob.glob(os.path.join(settings.DATA_DIR, "**/*.pdf"), recursive=True)
+    all_files.extend(pdf_files)
+    
+    # Get DOCX files
+    docx_files = glob.glob(os.path.join(settings.DATA_DIR, "**/*.docx"), recursive=True)
+    all_files.extend(docx_files)
+    
+    # Get DOC files
+    doc_files = glob.glob(os.path.join(settings.DATA_DIR, "**/*.doc"), recursive=True)
+    all_files.extend(doc_files)
+    
+    # Get TXT files
+    txt_files = glob.glob(os.path.join(settings.DATA_DIR, "**/*.txt"), recursive=True)
+    all_files.extend(txt_files)
+    
+    if not all_files:
+        logger.warning("No supported files found in the data directory.")
         return []
     
-    logger.info(f"Found {len(pdf_files)} PDF files to index.")
+    logger.info(f"Found {len(all_files)} files to index.")
     
-    # Index each PDF file
-    indices = []
-    for pdf_file in pdf_files:
+    # Index each file into the unified database
+    unified_index_path = os.path.join(settings.DOC_INDEXES_DIR, "materials_database")
+    
+    for file_path in all_files:
         try:
-            logger.info(f"Indexing {pdf_file}...")
-            index_path = create_and_save_document_index(embeddings, pdf_file)
-            indices.append(index_path)
-            logger.success(f"Successfully indexed {pdf_file} -> {index_path}")
+            logger.info(f"Indexing {file_path}...")
+            index_path = create_and_save_document_index(embeddings, file_path)
+            logger.success(f"Successfully indexed {file_path} -> {index_path}")
         except Exception as e:
-            logger.error(f"Failed to index {pdf_file}: {str(e)}")
+            logger.error(f"Failed to index {file_path}: {str(e)}")
     
-    logger.info(f"Successfully indexed {len(indices)} out of {len(pdf_files)} files.")
-    return indices
+    return [unified_index_path]

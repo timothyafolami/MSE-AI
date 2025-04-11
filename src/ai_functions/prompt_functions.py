@@ -23,8 +23,9 @@ load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-# Initialize sentence transformer embeddings
-sentence_transformer_embeddings = SentenceTransformer("all-MiniLM-L6-v2")
+# Initialize HuggingFace embeddings for LangChain compatibility
+from langchain_community.embeddings import HuggingFaceEmbeddings
+sentence_transformer_embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
 # LLAMA 3.1
 llama_llm = ChatGroq(
@@ -288,47 +289,50 @@ def generate_sub_queries(comprehensive_query: str, llm=llama_llm) -> List[str]:
         ]
 
 
-def search_materials_database(sub_queries: List[str], available_indices: List[str]) -> List[str]:
+def search_materials_database(sub_queries: List[str], available_indices: List[str] = None) -> List[str]:
     """
     Search the materials database using the sub-queries.
     
     Args:
         sub_queries: List of targeted sub-queries
-        available_indices: List of available document indices
+        available_indices: List of available document indices (deprecated, kept for compatibility)
         
     Returns:
         List[str]: Retrieved text segments
     """
     all_results = []
     
-    # Process each document index
-    for index_path in available_indices:
-        try:
-            # Extract just the folder name without the parent path
-            document_name = os.path.basename(index_path)
-            logger.info(f"Searching in document: {document_name}")
-            
-            # Retrieve documents for each sub-query
-            for query in sub_queries:
-                try:
-                    doc_results = retrieve_documents(
-                        embeddings=sentence_transformer_embeddings,
-                        query=query,
-                        document_name=document_name,
-                        search_type="mmr",
-                        k=3  # Limit results per query to avoid too much data
-                    )
-                    # Handle different return types (Document objects or other)
-                    for doc in doc_results:
-                        if hasattr(doc, 'page_content'):
-                            all_results.append(doc.page_content)
-                        else:
-                            all_results.append(str(doc))
-                    logger.info(f"Retrieved {len(doc_results)} results for query: {query}")
-                except Exception as e:
-                    logger.error(f"Error retrieving documents for query '{query}': {str(e)}")
-        except Exception as e:
-            logger.error(f"Error processing document index {index_path}: {str(e)}")
+    # Create a fresh HuggingFaceEmbeddings instance for this search
+    from langchain_community.embeddings import HuggingFaceEmbeddings
+    hf_embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    
+    # Use a single unified database approach
+    try:
+        logger.info(f"Searching in unified materials database")
+        
+        # Retrieve documents for each sub-query
+        for query in sub_queries:
+            try:
+                # Use direct similarity search with our new embeddings instance
+                doc_results = retrieve_documents(
+                    embeddings=hf_embeddings,
+                    query=query,  # No document_name means using unified database
+                    search_type="mmr",
+                    k=3  # Limit results per query to avoid too much data
+                )
+                
+                # Handle different return types (Document objects or other)
+                for doc in doc_results:
+                    if hasattr(doc, 'page_content'):
+                        all_results.append(doc.page_content)
+                    else:
+                        all_results.append(str(doc))
+                logger.info(f"Retrieved {len(doc_results)} results for query: {query}")
+            except Exception as e:
+                logger.error(f"Error retrieving documents for query '{query}': {str(e)}")
+                # Continue with other queries instead of failing
+    except Exception as e:
+        logger.error(f"Error searching the unified materials database: {str(e)}")
     
     # Remove duplicates while preserving order
     unique_results = []
@@ -357,21 +361,14 @@ def generate_material_recommendations(comprehensive_query: str, llm=llama_llm) -
         # First, generate sub-queries for the search
         sub_queries = generate_sub_queries(comprehensive_query)
         
-        # Get a list of all available document indices
-        index_dirs = []
-        for item in os.listdir(settings.DOC_INDEXES_DIR):
-            full_path = os.path.join(settings.DOC_INDEXES_DIR, item)
-            if os.path.isdir(full_path):
-                index_dirs.append(full_path)
+        # Check if unified database exists
+        unified_db_path = os.path.join(settings.DOC_INDEXES_DIR, "materials_database")
+        if not os.path.exists(os.path.join(unified_db_path, "index.faiss")):
+            logger.warning("Unified materials database not found")
+            return "I couldn't find the materials database. Please ensure documents have been properly indexed using the updated indexing system."
         
-        logger.info(f"Found {len(index_dirs)} document indices: {index_dirs}")
-        
-        if not index_dirs:
-            logger.warning("No document indices found in the database")
-            return "I couldn't find any indexed documents in our database. Please ensure that documents have been properly indexed."
-        
-        # Search the materials database using the sub-queries
-        retrieved_texts = search_materials_database(sub_queries, index_dirs)
+        # Search the unified materials database using the sub-queries
+        retrieved_texts = search_materials_database(sub_queries)
         
         if not retrieved_texts:
             logger.warning("No relevant document segments found in the database")
@@ -381,24 +378,15 @@ def generate_material_recommendations(comprehensive_query: str, llm=llama_llm) -
         formatted_sub_queries = "\n".join([f"- {q}" for q in sub_queries])
         
         # IMPORTANT: Limit number of document segments to avoid token limits
-        # Take only the most relevant documents (first 5)
-        if len(retrieved_texts) > 5:
-            logger.warning(f"Truncating {len(retrieved_texts)} retrieved texts to 5 to avoid token limits")
-            retrieved_texts = retrieved_texts[:5]
-        
-        # Limit the length of each text segment (truncate to 1000 chars)
+        # Use all retrieved texts as they won't exceed token limits
         truncated_texts = []
         for text in retrieved_texts:
             if isinstance(text, str):
-                if len(text) > 1000:
-                    truncated_text = text[:1000] + "... [truncated]"
-                    truncated_texts.append(truncated_text)
-                else:
-                    truncated_texts.append(text)
+                truncated_texts.append(text)
             else:
                 # If the text is not a string (could be an object), try to get its content
                 try:
-                    content = str(text)[:1000] + "... [truncated]" if len(str(text)) > 1000 else str(text)
+                    content = str(text)
                     truncated_texts.append(content)
                 except Exception as e:
                     logger.error(f"Error processing text segment: {str(e)}")

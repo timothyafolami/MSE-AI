@@ -12,7 +12,7 @@ from src.data_loader.pdf_loader import load_pdf
 
 def create_and_save_document_index(embeddings, document_path):
     """
-    Processes documents (PDF, DOCX/DOC, TXT), creates embeddings, and saves the FAISS index.
+    Processes documents (PDF, DOCX/DOC, TXT), creates embeddings, and saves to a single FAISS index.
     
     Args:
         embeddings: The embeddings object to use
@@ -23,13 +23,14 @@ def create_and_save_document_index(embeddings, document_path):
     """
     # Ensure output directory exists
     os.makedirs(settings.DOC_INDEXES_DIR, exist_ok=True)
-
-    # Get base document name for saving
-    doc_name = os.path.splitext(os.path.basename(document_path))[0]
-    save_path = os.path.join(settings.DOC_INDEXES_DIR, doc_name)
-
+    
+    # Use a common index name for all documents
+    save_path = os.path.join(settings.DOC_INDEXES_DIR, "materials_database")
+    
     # Load document based on file type
     file_ext = os.path.splitext(document_path)[1].lower()
+    doc_name = os.path.splitext(os.path.basename(document_path))[0]
+    
     try:
         if file_ext == '.pdf':
             # Use the load_pdf function from pdf_loader.py
@@ -38,10 +39,13 @@ def create_and_save_document_index(embeddings, document_path):
             doc = docx.Document(document_path)
             paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
             text = "\n\n".join(paragraphs)
-            documents = [Document(page_content=text, metadata={"source": document_path, "type": "word"})]
+            documents = [Document(page_content=text, metadata={"source": document_path, "type": "word", "doc_name": doc_name})]
         elif file_ext == '.txt':
             loader = TextLoader(document_path)
             documents = loader.load()
+            # Add doc_name to metadata
+            for doc in documents:
+                doc.metadata["doc_name"] = doc_name
         else:
             raise ValueError(f"Unsupported file format: {file_ext}")
     except Exception as e:
@@ -50,18 +54,40 @@ def create_and_save_document_index(embeddings, document_path):
 
     # Split text into chunks
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=10000,
+        chunk_size=2000,
         chunk_overlap=150,  # Increased overlap for better context preservation
         length_function=len,
         separators=["\n\n", "\n", ". ", " ", ""]
     )
     split_documents = text_splitter.split_documents(documents)
     
-    logger.info(f"Split document into {len(split_documents)} chunks")
+    # Add document name to metadata if not already present
+    for doc in split_documents:
+        if "doc_name" not in doc.metadata:
+            doc.metadata["doc_name"] = doc_name
+    
+    logger.info(f"Split document {doc_name} into {len(split_documents)} chunks")
 
     try:
-        # Create vector store from split documents
-        vectorstore = FAISS.from_documents(split_documents, embeddings)
+        # Create a proper HuggingFaceEmbeddings wrapper around SentenceTransformer
+        # This is needed because SentenceTransformer uses .encode() while LangChain expects .embed_documents()
+        from langchain_community.embeddings import HuggingFaceEmbeddings
+        
+        # Create HuggingFace embeddings from the model
+        hf_embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        
+        # Check if index already exists
+        if os.path.exists(os.path.join(save_path, "index.faiss")):
+            # Load existing index
+            logger.info(f"Loading existing index at {save_path}")
+            vectorstore = FAISS.load_local(save_path, hf_embeddings, allow_dangerous_deserialization=True)
+            
+            # Add new documents to existing index
+            vectorstore.add_documents(split_documents)
+        else:
+            # Create new vector store from split documents
+            logger.info(f"Creating new index at {save_path}")
+            vectorstore = FAISS.from_documents(split_documents, hf_embeddings)
         
         # Ensure directory exists for saving the index
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -78,65 +104,47 @@ def create_and_save_document_index(embeddings, document_path):
 def retrieve_documents(
     embeddings,
     query: str,
-    document_name: str,
-    search_type: str = "mmr",
+    document_name: str = None,  # Now optional
+    search_type: str = "similarity",  # Changed default to similarity
     k: int = 5
 ) -> list:
     """
-    Retrieve relevant documents from a saved index based on a query.
+    Retrieve relevant documents from the materials database based on a query.
     
     Args:
-        embeddings: The embeddings object to use
+        embeddings: The embeddings object to use (ignored, we create our own)
         query (str): Search query or question
-        document_name (str): Name of the document index to search
+        document_name (str, optional): Name of the specific document index to search.
+                                      If None, searches the unified database.
         search_type (str): Type of search ('mmr' or 'similarity')
         k (int): Number of documents to return
     
     Returns:
         List[str]: Relevant document chunks
     """
-    # Load the saved index
-    index_path = os.path.join(settings.DOC_INDEXES_DIR, document_name)
-    try:
-        logger.info(f"Loading index from {index_path}")
-        vector_store = FAISS.load_local(index_path, embeddings, allow_dangerous_deserialization=True)
-    except Exception as e:
-        logger.error(f"Failed to load index for {document_name}: {str(e)}")
-        raise ValueError(f"Failed to load index for {document_name}: {str(e)}")
-
-    # Create retriever with specified search parameters
-    search_kwargs = {
-        "k": k,
-    }
-    
-    # Add fetch_k parameter for MMR search
-    if search_type == "mmr":
-        search_kwargs["fetch_k"] = min(k * 3, 100)  # Fetch more candidates for diversity
-        search_kwargs["lambda_mult"] = 0.7  # Balance between relevance and diversity
+    # Use unified index by default, or specific document index if provided
+    if document_name:
+        index_path = os.path.join(settings.DOC_INDEXES_DIR, document_name)
+    else:
+        index_path = os.path.join(settings.DOC_INDEXES_DIR, "materials_database")
     
     try:
-        retriever = vector_store.as_retriever(
-            search_type=search_type,
-            search_kwargs=search_kwargs
-        )
+        # Create a proper HuggingFaceEmbeddings wrapper
+        from langchain_community.embeddings import HuggingFaceEmbeddings
+        hf_embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         
-        # Perform document retrieval
-        logger.info(f"Retrieving documents for query: {query}")
-        docs = retriever.invoke(query)
-        logger.success(f"Retrieved {len(docs)} documents for query: {query}")
+        logger.info(f"Loading index from {index_path}")
+        vector_store = FAISS.load_local(index_path, hf_embeddings, allow_dangerous_deserialization=True)
+        
+        # Simple similarity search - most reliable approach
+        docs = vector_store.similarity_search(query, k=k)
+        index_name = document_name if document_name else "unified materials database"
+        logger.success(f"Retrieved {len(docs)} documents from {index_name} for query: {query}")
         return docs
     except Exception as e:
-        # Check if the error is related to the retriever type
-        if "items" in str(e) and "has no attribute" in str(e):
-            # Try fallback to similarity search directly
-            logger.warning(f"Falling back to direct similarity search for {document_name}")
-            try:
-                docs = vector_store.similarity_search(query, k=k)
-                logger.success(f"Successfully retrieved {len(docs)} documents using fallback method")
-                return docs
-            except Exception as fallback_e:
-                logger.error(f"Fallback retrieval also failed: {str(fallback_e)}")
-                raise ValueError(f"Failed to retrieve documents using fallback method: {str(fallback_e)}")
-        else:
-            logger.error(f"Error during document retrieval for {document_name}: {str(e)}")
-            raise ValueError(f"Failed to retrieve documents for query '{query}' from {document_name}: {str(e)}")
+        index_name = document_name if document_name else "unified materials database"
+        logger.error(f"Failed to retrieve documents for {index_name}: {str(e)}")
+        
+        # Return empty list instead of raising an exception
+        logger.warning(f"Returning empty results due to retrieval error")
+        return []
