@@ -37,7 +37,7 @@ llama_llm = ChatGroq(
 
 # QWEN LLM for conversational mode (higher temperature)
 conv_llm = ChatGroq(
-    model="qwen-2.5-32b",  
+    model="gemma2-9b-it",  
     api_key=GROQ_API_KEY, 
     temperature=0.7,  # Higher temperature for more creative responses
     max_retries=5 
@@ -107,14 +107,14 @@ def generate_conversational_response(query: str, llm=conv_llm) -> str:
 
 def generate_initial_questions(query: str, llm=llama_llm) -> list:
     """
-    Generate 4 initial sub-questions to gather requirements for material selection.
-    
+    Generate 2 initial sub-questions to gather requirements for material selection.
+
     Args:
         query: User's query
         llm: The language model
-        
+
     Returns:
-        list: List of 4 questions
+        list: List of 2 questions
     """
     question_prompt = PromptTemplate(
         input_variables=["query"],
@@ -147,14 +147,14 @@ def generate_initial_questions(query: str, llm=llama_llm) -> list:
 def generate_refined_questions(original_query: str, question_answers: Dict[str, str], llm=llama_llm) -> list:
     """
     Generate refined follow-up questions based on initial responses.
-    
+
     Args:
         original_query: Original user query
         question_answers: Dictionary of initial questions and user answers
         llm: The language model
-        
+
     Returns:
-        list: List of 4 refined questions
+        list: List of 3 refined questions (2 specific + 1 optional)
     """
     # Format the question-answer pairs for the prompt
     qa_formatted = "\n".join([f"Q: {q}\nA: {a}" for q, a in question_answers.items()])
@@ -183,9 +183,8 @@ def generate_refined_questions(original_query: str, question_answers: Dict[str, 
         # Return some default refined questions if generation fails
         return [
             "Can you provide more specific details about the performance requirements?",
-            "Are there any specific material properties that are critical for your application?",
             "What is your budget range for the materials?",
-            "Are there any specific materials you've considered or would like to avoid?"
+            "Is there any other information you would like to provide that might help in selecting the optimal material for your application?"
         ]
 
 

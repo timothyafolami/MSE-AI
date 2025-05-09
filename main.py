@@ -62,10 +62,42 @@ def initialize_session_state():
     # Material recommendations state
     if 'recommendation_provided' not in st.session_state:
         st.session_state.recommendation_provided = False
+        
+    # Conversation history storage
+    if 'conversation_history' not in st.session_state:
+        st.session_state.conversation_history = []
+        
+    # Current conversation ID/timestamp
+    if 'current_conversation_id' not in st.session_state:
+        from datetime import datetime
+        st.session_state.current_conversation_id = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def reset_session_state():
     """Reset the session state for a new conversation"""
+    # Save current conversation to history if it's not empty
+    if 'conversation' in st.session_state and st.session_state.conversation:
+        # Create a conversation entry with timestamp and messages
+        conversation_entry = {
+            "id": st.session_state.current_conversation_id,
+            "messages": st.session_state.conversation.copy(),
+            "mode": st.session_state.mode
+        }
+        
+        # Add to history
+        st.session_state.conversation_history.append(conversation_entry)
+        
+        # Limit history to most recent 10 conversations
+        if len(st.session_state.conversation_history) > 10:
+            st.session_state.conversation_history = st.session_state.conversation_history[-10:]
+    
+    # Create new conversation ID
+    from datetime import datetime
+    st.session_state.current_conversation_id = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Reset conversation state
+    if 'conversation' in st.session_state:
+        st.session_state.conversation = []
     if 'mode' in st.session_state:
         st.session_state.mode = None
     if 'initial_questions' in st.session_state:
@@ -86,26 +118,80 @@ def reset_session_state():
         st.session_state.recommendation_provided = False
 
 
+def get_conversation_summary(conversation):
+    """Return a brief summary of the conversation based on the first user message"""
+    if conversation and "messages" in conversation and conversation["messages"]:
+        for message in conversation["messages"]:
+            if message["role"] == "user":
+                # Use the first 30 characters of the first user message as a summary
+                summary = message["content"][:30]
+                if len(message["content"]) > 30:
+                    summary += "..."
+                return summary
+    return "Empty conversation"
+
+
 def main():
     # Set page configuration
     st.set_page_config(
-        page_title="MSE-AI: Materials Science & Conversation Assistant",
+        page_title="Material Selection Professional Assistant",
         page_icon="🧪",
         layout="wide"
     )
     
     # Initialize session state
     initialize_session_state()
+
+    # Create sidebar
+    with st.sidebar:
+        # OAU Logo
+        st.image("/Users/apple/Downloads/MSE-AI/images/oau_logo.jpeg", width=150)
+        
+        st.markdown("### This project is conducted by the Department of Material Science and Engineering, OAU")
+        
+        # MSE Logo
+        st.image("/Users/apple/Downloads/MSE-AI/images/mse_logo.jpeg", width=150)
+        
+        st.markdown("**Supervisor Name:** Dr. John Smith")
+        st.markdown("**Student Name:** Jane Doe")
+        
+        st.markdown("---")
+        
+        # Add reset button to sidebar
+        if st.button("Start New Conversation"):
+            reset_session_state()
+            st.rerun()
+            
+        # Previous conversations section
+        st.markdown("### Conversation History")
+        
+        # Check if we have previous conversations
+        if st.session_state.conversation_history:
+            # Reverse the list to show newest first
+            history = st.session_state.conversation_history.copy()
+            history.reverse()
+            
+            # Create a selectbox for conversation history
+            conversation_options = [f"{conv['id']} - {get_conversation_summary(conv)}" for conv in history]
+            selected_conversation = st.selectbox("Previous conversations:", 
+                                               conversation_options,
+                                               key="conversation_selector")
+            
+            if st.button("Load Selected Conversation"):
+                # Find the selected conversation
+                selected_id = selected_conversation.split(" - ")[0]
+                for conv in st.session_state.conversation_history:
+                    if conv['id'] == selected_id:
+                        # Load this conversation
+                        st.session_state.conversation = conv['messages'].copy()
+                        st.session_state.mode = conv['mode']
+                        st.rerun()
+        else:
+            st.markdown("No previous conversations yet.")
     
     # Page title and description
-    st.title("MSE-AI: Materials Science & Conversation Assistant")
-    st.write("Ask any question - from everyday topics to specialized materials science inquiries. I can help with both!")
-    
-    # Add a reset button
-    if st.button("Start New Conversation"):
-        st.session_state.conversation = []
-        reset_session_state()
-        st.rerun()
+    st.title("Material Selection Professional Assistant")
+    st.write("Your expert guide for material selection and recommendations based on engineering requirements.")
     
     # Display conversation history
     for message in st.session_state.conversation:

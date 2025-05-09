@@ -44,23 +44,19 @@ You are an expert materials science engineer specializing in material selection 
 
 User query: {query}
 
-Based on this query, generate EXACTLY 4 focused follow-up questions that will help determine the most appropriate material selection or provide the most helpful information about materials science. These questions should:
+Based on this query, generate EXACTLY 2 focused follow-up questions that will help determine the most appropriate material selection or provide the most helpful information about materials science. These questions should:
 
 1. Identify critical performance requirements (strength, weight, temperature resistance, etc.)
 2. Determine environmental factors (corrosion, UV exposure, chemical exposure, etc.)
-3. Clarify manufacturing considerations (production method, quantity, cost constraints, etc.)
-4. Address application-specific needs (industry standards, aesthetic requirements, etc.)
 
 Your questions should be specific, technical where appropriate, and directly relevant to material selection for this specific query. Do not ask general questions about project timeline, budget, or other factors not directly related to material properties and selection.
 
-Format your response as a valid JSON object with a single key "questions" containing EXACTLY 4 strings, each representing a technical question. Example format:
+Format your response as a valid JSON object with a single key "questions" containing EXACTLY 2 strings, each representing a technical question. Example format:
 ```json
 
   "questions": [
     "What is the maximum operating temperature the material will be exposed to?",
-    "What are the strength requirements in terms of tensile, compressive, or impact resistance?",
-    "Will the material be exposed to corrosive chemicals or environments?",
-    "What manufacturing method will be used to form the material (machining, casting, 3D printing, etc.)?"
+    "What are the strength requirements in terms of tensile, compressive, or impact resistance?"
   ]
 
 ```
@@ -77,21 +73,23 @@ Original query: {original_query}
 Initial questions and user responses:
 {question_answers}
 
-Based on the user's original query and their responses to the initial questions, generate EXACTLY 4 more refined, technical follow-up questions that will help pinpoint the optimal material recommendation. These questions should:
+Based on the user's original query and their responses to the initial questions, generate EXACTLY 3 more refined, technical follow-up questions that will help pinpoint the optimal material recommendation. These questions should:
 
 1. Dive deeper into specific technical requirements based on the user's responses
 2. Seek to clarify any ambiguous or incomplete information from previous responses
-3. Use precise materials science terminology appropriate to the application
-4. Focus on critical factors that will most significantly influence material selection
+3. Focus on critical factors that will most significantly influence material selection, such as:
+   - Manufacturing considerations (production method, quantity, cost constraints, etc.)
+   - Application-specific needs (industry standards, aesthetic requirements, etc.)
 
-Format your response as a valid JSON object with a single key "questions" containing EXACTLY 4 strings, each representing a refined technical question. Example format:
+For the THIRD question, make it a general, optional question asking if there is any other information the user wants to provide to assist in the material selection process.
+
+Format your response as a valid JSON object with a single key "questions" containing EXACTLY 3 strings, each representing a refined technical question. Example format:
 ```json
 
   "questions": [
     "Given your operating temperature of 200°C, what is the maximum short-term temperature spike the material might experience?",
-    "You mentioned high strength requirements - can you specify the minimum yield strength in MPa that would be acceptable?",
-    "Besides the salt spray exposure you mentioned, are there any other chemicals (oils, solvents, etc.) that the material will contact?",
-    "For the injection molding process, what is the maximum acceptable material cost per kg and what production volume do you anticipate?"
+    "For the injection molding process, what is the maximum acceptable material cost per kg and what production volume do you anticipate?",
+    "Is there any other information you would like to provide that might help in selecting the optimal material for your application?"
   ]
 
 ```
@@ -170,9 +168,11 @@ Based on searches using the following sub-queries:
 Retrieved document segments:
 {retrieved_texts}
 
-Analyze the document segments in the context of the user requirements and provide a comprehensive material selection recommendation that:
+Analyze the document segments in the context of the user requirements and provide a comprehensive material selection recommendation. DO NOT use any major headings like "Introduction" or "Recommended Materials" at the beginning of your response.
 
-1. Identifies 2-3 specific material candidates that best meet the requirements
+Your recommendation should:
+
+1. Identify 2-3 specific material candidates that best meet the requirements
 2. For each recommended material:
    - List key properties relevant to the application
    - Explain why it is suitable for the specific requirements
@@ -194,7 +194,7 @@ Your analysis should demonstrate deep materials engineering expertise by:
 - Acknowledging trade-offs between different material properties
 - Providing specific, actionable recommendations
 
-Format your response with clear headings, bullet points for key information, and a professional, technical tone suitable for an engineering audience.
+Format your response with bullet points for key information where appropriate, and use a professional, technical tone suitable for an engineering audience. Start directly with the material recommendations without any introductory heading.
 """
 
 comprehensive_response_prompt = """
