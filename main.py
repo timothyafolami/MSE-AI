@@ -144,13 +144,19 @@ def main():
 
     # Create sidebar
     with st.sidebar:
-        # OAU Logo
-        st.image("/Users/apple/Downloads/MSE-AI/images/oau_logo.jpeg", width=150)
-        
+        # OAU Logo - Use relative path that works both locally and deployed
+        try:
+            st.image("images/oau_logo.jpeg", width=150)
+        except Exception:
+            st.write("OAU Logo")
+
         st.markdown("### This project is conducted by the Department of Material Science and Engineering, OAU")
-        
-        # MSE Logo
-        st.image("/Users/apple/Downloads/MSE-AI/images/mse_logo.jpeg", width=150)
+
+        # MSE Logo - Use relative path that works both locally and deployed
+        try:
+            st.image("images/mse_logo.jpeg", width=150)
+        except Exception:
+            st.write("MSE Logo")
         
         st.markdown("**Supervisor Name:** Dr. John Smith")
         st.markdown("**Student Name:** Jane Doe")
