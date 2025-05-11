@@ -33,17 +33,17 @@ def main():
         # Main title
         st.title("Material Selection Professional Assistant")
 
-        # Logos side by side
-        col1, col2 = st.columns(2)
+        # Logos side by side with smaller size for better mobile compatibility
+        col1, col2 = st.columns([1, 1])
         with col1:
             try:
-                st.image("images/oau_logo.jpeg", width=150)
+                st.image("images/oau_logo.jpeg", width=100)
             except Exception:
                 st.write("OAU Logo")
 
         with col2:
             try:
-                st.image("images/mse_logo.jpeg", width=150)
+                st.image("images/mse_logo.jpeg", width=100)
             except Exception:
                 st.write("MSE Logo")
 
