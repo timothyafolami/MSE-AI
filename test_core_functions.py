@@ -73,11 +73,15 @@ def test_material_science_mode():
             print(f"{i+1}. {question}")
         
         # Simulate answers to initial questions
+        initial_answer_pool = [
+            "The drone will operate in temperatures between -10°C to 40°C.",
+            "The frame needs to support a payload of 2kg while keeping the total weight under 1kg.",
+            "It will be used outdoors, exposed to rain, UV radiation, and occasional salt spray near coastal areas.",
+            "We're planning to use CNC machining initially, then injection molding for scale production."
+        ]
         initial_answers = {
-            initial_questions[0]: "The drone will operate in temperatures between -10°C to 40°C.",
-            initial_questions[1]: "The frame needs to support a payload of 2kg while keeping the total weight under 1kg.",
-            initial_questions[2]: "It will be used outdoors, exposed to rain, UV radiation, and occasional salt spray near coastal areas.",
-            initial_questions[3]: "We're planning to use CNC machining initially, then injection molding for scale production."
+            question: initial_answer_pool[min(index, len(initial_answer_pool) - 1)]
+            for index, question in enumerate(initial_questions)
         }
         
         # Generate refined questions
@@ -87,11 +91,15 @@ def test_material_science_mode():
             print(f"{i+1}. {question}")
         
         # Simulate answers to refined questions
+        refined_answer_pool = [
+            "Maximum temperature spikes of 50°C in direct sunlight.",
+            "The frame should withstand impact forces of up to 5G without permanent deformation.",
+            "The material should have excellent UV resistance and not degrade over 3 years of outdoor exposure.",
+            "The budget for materials is $200 per frame, and we need to make about 50 units initially."
+        ]
         refined_answers = {
-            refined_questions[0]: "Maximum temperature spikes of 50°C in direct sunlight.",
-            refined_questions[1]: "The frame should withstand impact forces of up to 5G without permanent deformation.",
-            refined_questions[2]: "The material should have excellent UV resistance and not degrade over 3 years of outdoor exposure.",
-            refined_questions[3]: "The budget for materials is $200 per frame, and we need to make about 50 units initially."
+            question: refined_answer_pool[min(index, len(refined_answer_pool) - 1)]
+            for index, question in enumerate(refined_questions)
         }
         
         # Create comprehensive query

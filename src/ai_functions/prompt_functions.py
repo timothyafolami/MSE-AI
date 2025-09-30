@@ -122,26 +122,50 @@ def generate_initial_questions(query: str, llm=llama_llm) -> list:
     )
     question_generator = question_prompt | llm | JsonOutputParser()
     
+    required_count = 2
+    default_questions = [
+        "What is the maximum operating temperature the material will be exposed to?",
+        "What strength or load-bearing requirements does your application have?",
+    ]
+
     try:
         # Generate questions as JSON
         result = question_generator.invoke({
             "query": query,
-        })        
-        # Extract questions list from the JSON result
-        questions = result.get("questions", [])
-        
-        logger.info(f"Generated {len(questions)} initial questions")
-        return questions
-        
+        })
+
+        # Extract questions list from the JSON result and clean it up
+        raw_questions = result.get("questions", []) if isinstance(result, dict) else []
+        cleaned_questions = []
+        for question in raw_questions:
+            if not isinstance(question, str):
+                continue
+            stripped_question = question.strip()
+            if stripped_question:
+                cleaned_questions.append(stripped_question)
+            if len(cleaned_questions) == required_count:
+                break
+
+        if len(cleaned_questions) < required_count:
+            for fallback_question in default_questions:
+                if fallback_question not in cleaned_questions:
+                    cleaned_questions.append(fallback_question)
+                if len(cleaned_questions) == required_count:
+                    break
+
+        if len(raw_questions) > required_count:
+            logger.info(
+                f"Initial question generator produced {len(raw_questions)} questions; trimmed to {required_count}."
+            )
+        else:
+            logger.info(f"Generated {len(cleaned_questions)} initial questions")
+
+        return cleaned_questions[:required_count]
+
     except Exception as e:
         logger.error(f"Initial question generation failed: {str(e)}")
-        # Return some default questions if generation fails
-        return [
-            "What is the maximum operating temperature the material will be exposed to?",
-            "What strength requirements does your application have?",
-            "What environmental conditions will the material be exposed to?",
-            "What manufacturing process do you plan to use?"
-        ]
+        # Return defaults if generation fails
+        return default_questions[:required_count]
 
 
 def generate_refined_questions(original_query: str, question_answers: Dict[str, str], llm=llama_llm) -> list:
@@ -165,27 +189,52 @@ def generate_refined_questions(original_query: str, question_answers: Dict[str, 
     )
     question_refiner = refiner_prompt | llm | JsonOutputParser()
     
+    required_count = 3
+    default_questions = [
+        "Can you provide more specific details about the performance requirements?",
+        "Are there any manufacturing or processing constraints we should consider?",
+        "Is there any other information you would like to share to refine the recommendation?",
+    ]
+
     try:
         # Generate refined questions as JSON
         result = question_refiner.invoke({
             "original_query": original_query,
             "question_answers": qa_formatted
         })
-        
-        # Extract questions list from the JSON result
-        questions = result.get("questions", [])
-        
-        logger.info(f"Generated {len(questions)} refined questions")
-        return questions
-        
+
+        # Extract questions list from the JSON result and clean it up
+        raw_questions = result.get("questions", []) if isinstance(result, dict) else []
+        cleaned_questions = []
+        for question in raw_questions:
+            if not isinstance(question, str):
+                continue
+            stripped_question = question.strip()
+            if stripped_question:
+                cleaned_questions.append(stripped_question)
+            if len(cleaned_questions) == required_count:
+                break
+
+        if len(cleaned_questions) < required_count:
+            for fallback_question in default_questions:
+                if fallback_question not in cleaned_questions:
+                    cleaned_questions.append(fallback_question)
+                if len(cleaned_questions) == required_count:
+                    break
+
+        if len(raw_questions) > required_count:
+            logger.info(
+                f"Refined question generator produced {len(raw_questions)} questions; trimmed to {required_count}."
+            )
+        else:
+            logger.info(f"Generated {len(cleaned_questions)} refined questions")
+
+        return cleaned_questions[:required_count]
+
     except Exception as e:
         logger.error(f"Refined question generation failed: {str(e)}")
-        # Return some default refined questions if generation fails
-        return [
-            "Can you provide more specific details about the performance requirements?",
-            "What is your budget range for the materials?",
-            "Is there any other information you would like to provide that might help in selecting the optimal material for your application?"
-        ]
+        # Return defaults if generation fails
+        return default_questions[:required_count]
 
 
 def create_comprehensive_query(
